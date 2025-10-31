@@ -1,5 +1,6 @@
 # HealthChatAgent
 
+```
 app/
 ├── main.py                # FastAPI 入口
 ├── runtime/               # Agent runtime：流程与节点
@@ -22,3 +23,4 @@ app/
 │   ├── models.py
 │   └── session.py
 └── utils/                 # 通用工具（日志、加密、配置）
+```
