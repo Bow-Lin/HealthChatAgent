@@ -19,6 +19,7 @@ def _default_rules() -> List[TriageRule]:
     Default red-flag / safety rules. You can extend or override via ctor.
     These are heuristic patterns for initial screening only.
     """
+    ##TODO: 翻译成中文 并修改测试用例
     urgent_terms = [
         r"severe chest pain",
         r"chest pain\b",
