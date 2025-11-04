@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional, Pattern, Dict, Any
-
+from pocketflow import Node
 
 @dataclass(frozen=True)
 class TriageRule:
@@ -47,7 +47,7 @@ def _normalize(text: str) -> str:
     return (text or "").strip().lower()
 
 
-class SafetyTriageNode:
+class SafetyTriageNode(Node):
     """
     Safety triage node.
     - Reads user's free text from shared["user_text"].

@@ -1,7 +1,8 @@
 from __future__ import annotations
 from typing import Any, Dict, List
+from pocketflow import Node
 
-class HistoryFetchNode:
+class HistoryFetchNode(Node):
     async def exec(self, shared: Dict[str, Any]) -> Dict[str, Any]:
         repo = shared["repo"]
         tenant_id = shared["tenant_id"]

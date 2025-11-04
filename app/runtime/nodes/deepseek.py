@@ -1,13 +1,14 @@
 # app/runtime/nodes/deepseek.py
 from typing import Dict, Any, List
 from services.deepseek_client import DeepSeekClient
+from pocketflow import Node
 
 SYSTEM_PROMPT = (
     "You are a medical/massage Q&A assistant for preliminary guidance only. "
     "You are not a doctor. Always include safety notes and when to seek in-person care."
 )
 
-class DeepSeekChatNode:
+class DeepSeekChatNode(Node):
     def __init__(self, *, temperature: float = 0.2) -> None:
         self.temperature = temperature
 
