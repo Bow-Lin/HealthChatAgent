@@ -8,10 +8,10 @@ app/
 │   ├── flow.py                  # Flow 编排（定义节点执行顺序）
 │   └── nodes/                   # 各 Node 模块（PocketFlow 风格）
 │       ├── triage.py            # SafetyTriageNode：分诊判断（紧急/非紧急）（已实现）
-│       ├── history.py           # HistoryFetchNode：获取历史就诊摘要
+│       ├── history.py           # HistoryFetchNode：获取历史就诊摘要（已实现）
 │       ├── deepseek.py          # DeepSeekChatNode：调用 DeepSeek 生成回复（已实现）
-│       ├── post.py              # PostprocessNode：解析模型输出、提取追问
-│       └── persist.py           # PersistNode：写入消息和审计日志
+│       ├── reply_extract.py     # PostprocessNode：解析模型输出、提取追问（已实现）
+│       └── persist.py           # PersistNode：写入消息和审计日志（已实现）
 │
 ├── services/                    # 外部依赖封装（DB、LLM、缓存、监控等）
 │   ├── repo.py                  # 数据访问层：封装数据库 CRUD、事务、审计（已实现）

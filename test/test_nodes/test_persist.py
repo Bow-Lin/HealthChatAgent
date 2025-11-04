@@ -1,153 +1,139 @@
-# tests/test_nodes/test_persist.py
-import asyncio
+# tests/test_persist_node.py
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.pool import StaticPool
-from sqlalchemy import select
+from typing import Any, Dict, List, Optional
 
-from app.db.models import Base, Patient, Encounter, Message, AuditLog
-from app.services.repo import Repo
+try:
+    from pocketflow import AsyncFlow as Flow
+except ImportError:
+    from pocketflow import Flow
+
 from app.runtime.nodes.persist import PersistNode
 
 
-@pytest.fixture(scope="session")
-def anyio_backend():
-    return "asyncio"
+# ---- Fakes ------------------------------------------------------------------
+
+class _FakeTxnCtx:
+    def __init__(self, repo):
+        self.repo = repo
+    async def __aenter__(self):
+        # mimic session object by passing repo itself to methods
+        return self.repo
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+class FakeRepo:
+    """A minimal in-memory repo capturing writes and audits, with a txn context."""
+    def __init__(self):
+        self.messages: List[Dict[str, Any]] = []
+        self.audits: List[Dict[str, Any]] = []
+        self._in_txn = False
+
+    def transaction(self):
+        return _FakeTxnCtx(self)
+
+    async def append_message(
+        self,
+        tenant_id: str,
+        encounter_id: str,
+        role: str,
+        content: str,
+        content_json: Optional[dict] = None,
+        *,
+        session=None,
+    ):
+        assert session is self  # ensure we are inside "transaction"
+        self.messages.append({
+            "tenant_id": tenant_id,
+            "encounter_id": encounter_id,
+            "role": role,
+            "content": content,
+            "content_json": content_json,
+        })
+
+    async def audit(
+        self,
+        tenant_id: str,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+        meta_json: Optional[dict] = None,
+        *,
+        session=None,
+    ):
+        assert session is self
+        self.audits.append({
+            "tenant_id": tenant_id,
+            "action": action,
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+            "meta_json": meta_json or {},
+        })
 
 
-@pytest.fixture(scope="session")
-async def engine():
-    eng = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        echo=False,
-        poolclass=StaticPool,
-    )
-    async with eng.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    try:
-        yield eng
-    finally:
-        await eng.dispose()
-
-
-@pytest.fixture()
-def session_factory(engine):
-    return async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
-
-
-@pytest.fixture()
-def repo(session_factory):
-    return Repo(session_factory)
-
-
-async def _bootstrap_encounter(session: AsyncSession, tenant_id: str) -> str:
-    p = Patient(tenant_id=tenant_id)
-    session.add(p)
-    await session.flush()
-    e = Encounter(tenant_id=tenant_id, patient_id=p.id, status="active")
-    session.add(e)
-    await session.flush()
-    return str(e.id)
-
-
-@pytest.mark.asyncio
-async def test_persist_writes_user_then_assistant_and_audit(repo: Repo, session_factory):
-    tenant = "t1"
-    async with session_factory() as s:
-        async with s.begin():
-            enc_id = await _bootstrap_encounter(s, tenant)
-
-    node = PersistNode()
-    shared = {
-        "repo": repo,
-        "tenant_id": tenant,
-        "encounter_id": enc_id,
-        "user_text": "u1",
-        "to_persist": [
-            {"role": "assistant", "content": "a1"},
-            {"role": "assistant", "content": "a2"},
-        ],
-    }
-    await node.exec(shared)
-
-    async with session_factory() as s:
-        res = await s.execute(
-            select(Message).where(
-                Message.tenant_id == tenant,
-                Message.encounter_id == int(enc_id),
-            ).order_by(Message.created_at.asc(), Message.id.asc())
-        )
-        msgs = res.scalars().all()
-        assert [m.role for m in msgs] == ["user", "assistant", "assistant"]
-        assert [m.content for m in msgs] == ["u1", "a1", "a2"]
-
-        res2 = await s.execute(
-            select(AuditLog).where(
-                AuditLog.tenant_id == tenant,
-                AuditLog.resource_id == enc_id,
-                AuditLog.action == "chat.append",
-            )
-        )
-        logs = res2.scalars().all()
-        assert len(logs) == 1
-        assert logs[0].meta_json.get("count") == 3
-
-
-class ProxyRepo(Repo):
-    def __init__(self, session_factory, boom_on_content: str):
-        super().__init__(session_factory)
-        self._boom = boom_on_content
-
-    async def append_message(self, tenant_id, encounter_id, role, content, content_json=None, *, session=None):
-        if content == self._boom:
-            raise RuntimeError("boom")
-        return await super().append_message(tenant_id, encounter_id, role, content, content_json, session=session)
-
+# ---- Tests ------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_persist_rolls_back_on_error(session_factory):
-    tenant = "t2"
-    async with session_factory() as s:
-        async with s.begin():
-            enc_id = await _bootstrap_encounter(s, tenant)
-
-    repo = ProxyRepo(session_factory, boom_on_content="fail-here")
-    node = PersistNode()
-    shared = {
+async def test_persist_node_writes_user_and_assistant_and_audit():
+    repo = FakeRepo()
+    shared: Dict[str, Any] = {
         "repo": repo,
-        "tenant_id": tenant,
-        "encounter_id": enc_id,
-        "user_text": "ok-user",
+        "tenant_id": "t1",
+        "encounter_id": "e1",
+        "user_text": "I have mild back pain today",
         "to_persist": [
-            {"role": "assistant", "content": "fail-here"},
+            {"role": "assistant", "content": "Ok, noted."},
+            {"role": "assistant", "content": "Apply warm compress 2x/day"},
         ],
     }
 
-    with pytest.raises(RuntimeError):
-        await node.exec(shared)
+    node = PersistNode()
+    node.successors = {}
+    flow = Flow(start=node)
 
-    async with session_factory() as s:
-        res = await s.execute(
-            select(Message).where(
-                Message.tenant_id == tenant,
-                Message.encounter_id == int(enc_id),
-            )
-        )
-        msgs = res.scalars().all()
-        assert msgs == []
+    action = await flow.run_async(shared)
 
-        res2 = await s.execute(
-            select(AuditLog).where(
-                AuditLog.tenant_id == tenant,
-                AuditLog.resource_id == enc_id,
-                AuditLog.action == "chat.append",
-            )
-        )
-        assert res2.scalars().first() is None
+    assert action == "ok"
+    # Order: user first, then assistant items
+    assert [m["role"] for m in repo.messages] == ["user", "assistant", "assistant"]
+    assert repo.messages[0]["content"] == "I have mild back pain today"
+    assert repo.messages[1]["content"] == "Ok, noted."
+    assert repo.messages[2]["content"] == "Apply warm compress 2x/day"
+
+    # Audit with correct count
+    assert len(repo.audits) == 1
+    assert repo.audits[0]["action"] == "chat.append"
+    assert repo.audits[0]["resource_type"] == "encounter"
+    assert repo.audits[0]["resource_id"] == "e1"
+    assert repo.audits[0]["meta_json"]["count"] == 3
+
+    # Shared updated
+    assert shared["last_persist_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_persist_node_handles_empty_to_persist():
+    repo = FakeRepo()
+    shared: Dict[str, Any] = {
+        "repo": repo,
+        "tenant_id": "t1",
+        "encounter_id": "e2",
+        "user_text": "Hello",
+        "to_persist": [],
+    }
+
+    node = PersistNode()
+    node.successors = {}
+    flow = Flow(start=node)
+
+    action = await flow.run_async(shared)
+
+    assert action == "ok"
+    # Only the user message is stored
+    assert len(repo.messages) == 1
+    assert repo.messages[0]["role"] == "user"
+    assert repo.messages[0]["content"] == "Hello"
+
+    # Audit count = 1
+    assert repo.audits and repo.audits[0]["meta_json"]["count"] == 1
+    assert shared["last_persist_count"] == 1

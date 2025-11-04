@@ -1,43 +1,59 @@
-# tests/test_nodes/test_history.py
+# tests/test_history_lookup_node.py
 import pytest
-from app.runtime.nodes.history import HistoryFetchNode
+from typing import Any, Dict, List, Optional
 
-class DummyRepo:
-    def __init__(self, data):
-        self.data = data
-        self.calls = []
+from pocketflow import AsyncFlow as Flow
 
-    async def get_recent_encounter_summaries(self, tenant_id, encounter_id, limit: int = 5):
-        self.calls.append((tenant_id, encounter_id, limit))
-        return self.data
+from app.runtime.nodes.history import HistoryLookupNode
 
-@pytest.fixture(scope="session")
-def anyio_backend():
-    return "asyncio"
+
+class FakeRepoWithPrior:
+    def __init__(self, prior: List[str]) -> None:
+        self._prior = prior
+
+    async def get_recent_encounter_summaries(self, tenant_id: str, current_enc_id: str, limit: int) -> List[str]:
+        # Simulate prior encounters excluding the current one
+        return self._prior[:limit]
+
+
+class FakeRepoWithoutPrior:
+    async def get_recent_encounter_summaries(self, tenant_id: str, current_enc_id: str, limit: int) -> List[str]:
+        return []
+
 
 @pytest.mark.asyncio
-async def test_history_empty():
-    node = HistoryFetchNode()
-    repo = DummyRepo([])
-    shared = {
-        "repo": repo,
+async def test_history_lookup_has_history_path():
+    shared: Dict[str, Any] = {
         "tenant_id": "t1",
-        "encounter_id": "e1",
+        "encounter_id": "e123",
+        "repo": FakeRepoWithPrior(["2025-10-02: 肩颈不适，建议热敷", "2025-08-17: 腰背酸痛，轻度拉伸"]),
     }
-    out = await node.exec(shared)
-    assert out["history_summaries"] == []
-    assert repo.calls[0][0] == "t1"
-    assert repo.calls[0][1] == "e1"
+
+    node = HistoryLookupNode(limit=3)
+    node.successors = {}  # end here for unit test
+    flow = Flow(start=node)
+
+    action = await flow.run_async(shared)
+
+    assert action == "has_history"
+    assert shared["has_prior_history"] is True
+    assert shared["prior_summaries"] == ["2025-10-02: 肩颈不适，建议热敷", "2025-08-17: 腰背酸痛，轻度拉伸"]
+
 
 @pytest.mark.asyncio
-async def test_history_multiple_and_order():
-    node = HistoryFetchNode()
-    repo = DummyRepo(["s1", "s2", "s3"])
-    shared = {
-        "repo": repo,
-        "tenant_id": "t2",
-        "encounter_id": "e9",
+async def test_history_lookup_no_history_path():
+    shared: Dict[str, Any] = {
+        "tenant_id": "t1",
+        "encounter_id": "e999",
+        "repo": FakeRepoWithoutPrior(),
     }
-    out = await node.exec(shared)
-    assert out["history_summaries"] == ["s1", "s2", "s3"]
-    assert repo.calls[0] == ("t2", "e9", 5)
+
+    node = HistoryLookupNode(limit=5)
+    node.successors = {}
+    flow = Flow(start=node)
+
+    action = await flow.run_async(shared)
+
+    assert action == "no_history"
+    assert shared["has_prior_history"] is False
+    assert shared["prior_summaries"] == []

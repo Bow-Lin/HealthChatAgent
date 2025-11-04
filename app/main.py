@@ -29,7 +29,7 @@ async def chat(enc_id: str, body: ChatIn, repo: Repo = Depends(Repo.dep), ctx=De
         "repo": repo,
     }
     flow = make_clinical_flow()
-    await flow.run(shared)  # PocketFlow-style async run
+    await flow.run_async(shared)  # PocketFlow-style async run
 
     return ChatOut(
         reply=shared["assistant_reply"],

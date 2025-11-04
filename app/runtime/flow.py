@@ -1,24 +1,47 @@
 # app/runtime/flow.py
 from __future__ import annotations
-from typing import Any, Dict
-from pocketflow import Flow
+
+from pocketflow import AsyncFlow
 from app.runtime.nodes.triage import SafetyTriageNode
-from app.runtime.nodes.history import HistoryFetchNode
+from app.runtime.nodes.history import HistoryLookupNode
 from app.runtime.nodes.deepseek import DeepSeekChatNode
 from app.runtime.nodes.reply_extract import ReplyExtractNode
 from app.runtime.nodes.persist import PersistNode
+from app.runtime.nodes.urgent_advice import UrgentAdviceNode
 
-def make_clinical_flow() -> Flow:
-    return Flow(
-        start=SafetyTriageNode(),
-        chain=[
-            HistoryFetchNode(),
-            DeepSeekChatNode(),
-            ReplyExtractNode(),
-            PersistNode(),
-        ],
-    )
 
-async def run_flow(shared: Dict[str, Any]) -> Dict[str, Any]:
-    flow = make_clinical_flow()
-    return await flow.run(shared)
+def make_clinical_flow() -> AsyncFlow:
+    """Clinical chat flow:
+    triage → (urgent → urgent_advice → persist)
+            → (ok → history_lookup → deepseek → reply_extract → persist)
+    """
+
+    # Instantiate all nodes
+    triage = SafetyTriageNode()
+    history_lookup = HistoryLookupNode()
+    deepseek = DeepSeekChatNode()
+    reply_extract = ReplyExtractNode()
+    persist = PersistNode()
+    urgent = UrgentAdviceNode()
+
+    # --- Routing setup ---
+
+    # 1. triage routes
+    triage.successors = {
+        "urgent": urgent,
+        "ok": history_lookup,
+    }
+
+    # 2. normal (ok) path
+    history_lookup.successors = {
+        "has_history": deepseek,   # has prior history → deepseek
+        "no_history": deepseek,    # no prior history → still deepseek
+    }
+    deepseek.successors = {"ok": reply_extract}
+    reply_extract.successors = {"ok": persist}
+
+    # 3. urgent path
+    urgent.successors = {"ok": persist}
+
+    # --- Flow entry point ---
+    return AsyncFlow(start=triage)
