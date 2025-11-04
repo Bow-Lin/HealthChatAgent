@@ -7,15 +7,15 @@ app/
 ├── runtime/                     # Agent 运行时逻辑：节点 + 流程
 │   ├── flow.py                  # Flow 编排（定义节点执行顺序）
 │   └── nodes/                   # 各 Node 模块（PocketFlow 风格）
-│       ├── triage.py            # SafetyTriageNode：分诊判断（紧急/非紧急）
+│       ├── triage.py            # SafetyTriageNode：分诊判断（紧急/非紧急）（已实现）
 │       ├── history.py           # HistoryFetchNode：获取历史就诊摘要
-│       ├── deepseek.py          # DeepSeekChatNode：调用 DeepSeek 生成回复
+│       ├── deepseek.py          # DeepSeekChatNode：调用 DeepSeek 生成回复（已实现）
 │       ├── post.py              # PostprocessNode：解析模型输出、提取追问
 │       └── persist.py           # PersistNode：写入消息和审计日志
 │
 ├── services/                    # 外部依赖封装（DB、LLM、缓存、监控等）
-│   ├── repo.py                  # 数据访问层：封装数据库 CRUD、事务、审计
-│   ├── deepseek_client.py       # DeepSeek API 封装（非流式/流式接口）
+│   ├── repo.py                  # 数据访问层：封装数据库 CRUD、事务、审计（已实现）
+│   ├── deepseek_client.py       # DeepSeek API 封装（非流式/流式接口）（已实现）
 │   └── __init__.py
 │
 ├── schemas/                     # Pydantic 模型（输入输出）
@@ -25,8 +25,8 @@ app/
 │   └── __init__.py
 │
 ├── db/                          # 数据表与数据库会话管理
-│   ├── models.py                # ORM 模型定义（Patient、Encounter、Message、AuditLog）
-│   ├── session.py               # 异步数据库会话、engine、init_db()
+│   ├── models.py                # ORM 模型定义（Patient、Encounter、Message、AuditLog）（已实现）
+│   ├── session.py               # 异步数据库会话、engine、init_db()（已实现）
 │   └── __init__.py
 │
 ├── utils/                       # 通用工具与配置
@@ -41,7 +41,7 @@ app/
     │   ├── test_triage.py       # triage 节点单测（已通过）
     │   └── ...
     ├── test_services/
-    │   ├── test_repo.py         # repo 单测
+    │   ├── test_repo.py         # repo 单测（已通过）
     │   └── ...
     ├── test_runtime/
     │   └── test_flow.py         # Flow 级联执行测试
