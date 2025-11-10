@@ -32,11 +32,15 @@ class TimeStamped(SQLModel):
 
 class PatientBase(SQLModel):
     tenant_id: str = Field(index=True, nullable=False)
+    # Patient display name (used in frontend search/list)
+    name: Optional[str] = Field(default=None, index=True)
     external_ref: Optional[str] = Field(default=None, index=True)
+
 
 
 class Patient(PatientBase, TimeStamped, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    last_encounter_at: Optional[datetime] = Field(default=None, nullable=True)
 
 
 class EncounterBase(SQLModel):

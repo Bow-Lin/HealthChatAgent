@@ -9,7 +9,7 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      "/api": "http://localhost:8000", // 如果后端端口不是 8000，就在这里改
+      "/api": "http://localhost:9000", // 如果后端端口不是 8000，就在这里改
     },
   },
 });

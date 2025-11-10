@@ -7,7 +7,8 @@ from typing import Any, AsyncIterator, Callable, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Message, AuditLog, Encounter  # Patient/Encounter exist but not required for MVP
+from app.db.models import Message, AuditLog, Encounter, Patient
+  # Patient/Encounter exist but not required for MVP
 
 
 class Repo:
@@ -175,6 +176,133 @@ class Repo:
             if created_here:
                 await session.rollback()
             raise
+        finally:
+            if close_session:
+                await session.close()
+
+    async def create_patient(
+        self,
+        tenant_id: str,
+        name: str,
+        *,
+        session: Optional[AsyncSession] = None,
+    ) -> Patient:
+        """Create a new patient. If no session provided, autocommits."""
+        close_session = False
+        created_here = False
+        if session is None:
+            session = self._session_factory()
+            close_session = True
+            created_here = True
+
+        try:
+            patient = Patient(tenant_id=tenant_id, name=name)
+            session.add(patient)
+            await session.flush()
+            if created_here:
+                await session.commit()
+            await session.refresh(patient)
+            return patient
+        except Exception:
+            if created_here:
+                await session.rollback()
+            raise
+        finally:
+            if close_session:
+                await session.close()
+
+    async def list_recent_patients(
+        self,
+        tenant_id: str,
+        *,
+        limit: int = 20,
+        session: Optional[AsyncSession] = None,
+    ) -> list[Patient]:
+        """Return recent patients for a tenant, ordered by creation time."""
+        close_session = False
+        if session is None:
+            session = self._session_factory()
+            close_session = True
+
+        try:
+            stmt = (
+                select(Patient)
+                .where(Patient.tenant_id == tenant_id)
+                .order_by(Patient.created_at.desc())
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
+        finally:
+            if close_session:
+                await session.close()
+
+    async def search_patients_by_name(
+        self,
+        tenant_id: str,
+        name_query: str,
+        *,
+        limit: int = 20,
+        session: Optional[AsyncSession] = None,
+    ) -> list[Patient]:
+        """Search patients by name (ILIKE %query%)."""
+        close_session = False
+        if session is None:
+            session = self._session_factory()
+            close_session = True
+
+        try:
+            pattern = f"%{name_query}%"
+            stmt = (
+                select(Patient)
+                .where(
+                    Patient.tenant_id == tenant_id,
+                    Patient.name.ilike(pattern),
+                )
+                .order_by(Patient.created_at.desc())
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
+        finally:
+            if close_session:
+                await session.close()
+
+    # ---------------------------
+    # Messages by patient
+    # ---------------------------
+    async def get_messages_by_patient(
+        self,
+        tenant_id: str,
+        patient_id: str,
+        *,
+        session: Optional[AsyncSession] = None,
+    ) -> list[Message]:
+        """
+        Return all messages of all encounters for a given patient,
+        ordered by time.
+        """
+        close_session = False
+        if session is None:
+            session = self._session_factory()
+            close_session = True
+
+        try:
+            stmt = (
+                select(Message)
+                .join(
+                    Encounter,
+                    (Encounter.tenant_id == Message.tenant_id)
+                    & (Encounter.id == Message.encounter_id),
+                )
+                .where(
+                    Message.tenant_id == tenant_id,
+                    Encounter.patient_id == patient_id,
+                )
+                .order_by(Message.created_at.asc(), Message.id.asc())
+            )
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
         finally:
             if close_session:
                 await session.close()

@@ -57,3 +57,19 @@ app/
     └── conftest.py              # pytest 全局配置（PYTHONPATH、fixtures）
 
 ```
+
+初始化数据库
+```
+uv run python -c "import asyncio; from app.db.session import init_db; asyncio.run(init_db())"
+```
+
+启动后端服务(./HealthChatAgent)
+
+```
+uv run uvicorn app.main:app --reload --port 9000
+```
+
+启动前端服务(HealthChatAgent/frontend)
+```
+bun run dev
+```
