@@ -1,10 +1,19 @@
 # HealthChatAgent
 
 ```
+frontend/
+├── frontend component
+│
+│
 app/
 ├── main.py                      # FastAPI 入口（创建应用、注册路由、加载 Flow）
 │
-├── runtime/                     # Agent 运行时逻辑：节点 + 流程
+│
+├──api/
+│   ├── chat.py                  # 对话相关API
+│   ├── user.py                  # 用户相关API
+│
+├── runtime/                      # Agent 运行时逻辑：节点 + 流程
 │   ├── flow.py                  # Flow 编排（定义节点执行顺序）
 │   └── nodes/                   # 各 Node 模块（PocketFlow 风格）
 │       ├── triage.py            # SafetyTriageNode：分诊判断（紧急/非紧急）（已实现）
