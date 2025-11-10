@@ -46,7 +46,6 @@ const App: React.FC = () => {
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  // Helpers
   const selectedPatient = useMemo(
     () => patients.find((p) => p.id === selectedPatientId) ?? null,
     [patients, selectedPatientId]
@@ -62,7 +61,6 @@ const App: React.FC = () => {
     return triageByPatient[selectedPatientId] ?? null;
   }, [triageByPatient, selectedPatientId]);
 
-  // Initial load: fetch recent patients
   useEffect(() => {
     const fetchPatients = async () => {
       setPatientsLoading(true);
@@ -88,30 +86,31 @@ const App: React.FC = () => {
     fetchPatients().catch(console.error);
   }, []);
 
-  // Search patients by name (server-side)
+  const reloadDefaultPatients = async () => {
+    setPatientsLoading(true);
+    setPatientsError(null);
+    try {
+      const res = await fetch("/api/users?limit=20");
+      if (!res.ok) throw new Error(`Failed to load users (${res.status})`);
+      const data = await res.json();
+      const mapped: Patient[] = (data as any[]).map((u) => ({
+        id: u.id,
+        name: u.name,
+        lastEncounterAt: u.last_encounter_at ?? null,
+      }));
+      setPatients(mapped);
+    } catch (err: any) {
+      console.error(err);
+      setPatientsError(err?.message ?? "Failed to load users.");
+    } finally {
+      setPatientsLoading(false);
+    }
+  };
+
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
-    // Empty query → 重新加载默认列表
     if (!query.trim()) {
-      // 简单起见，直接重用初始加载逻辑
-      setPatientsLoading(true);
-      setPatientsError(null);
-      try {
-        const res = await fetch("/api/users?limit=20");
-        if (!res.ok) throw new Error(`Failed to load users (${res.status})`);
-        const data = await res.json();
-        const mapped: Patient[] = (data as any[]).map((u) => ({
-          id: u.id,
-          name: u.name,
-          lastEncounterAt: u.last_encounter_at ?? null,
-        }));
-        setPatients(mapped);
-      } catch (err: any) {
-        console.error(err);
-        setPatientsError(err?.message ?? "Failed to load users.");
-      } finally {
-        setPatientsLoading(false);
-      }
+      await reloadDefaultPatients();
       return;
     }
 
@@ -134,7 +133,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Select patient: fetch history if not loaded yet
   const handleSelectPatient = async (patient: Patient) => {
     setSelectedPatientId(patient.id);
     setSendError(null);
@@ -142,7 +140,9 @@ const App: React.FC = () => {
       return;
     }
     try {
-      const res = await fetch(`/api/chat/history?user_id=${encodeURIComponent(patient.id)}`);
+      const res = await fetch(
+        `/api/chat/history?user_id=${encodeURIComponent(patient.id)}`
+      );
       if (!res.ok) throw new Error(`Failed to load history (${res.status})`);
       const data = await res.json();
       const mapped: ChatMessage[] = (data as any[]).map((m, index) => ({
@@ -155,13 +155,11 @@ const App: React.FC = () => {
         ...prev,
         [patient.id]: mapped,
       }));
-      // 如果历史里最后一条包含 triage 信息，可以在这里解析并写入 triageByPatient
     } catch (err) {
       console.error(err);
     }
   };
 
-  // Create a new patient (very simple prompt-based UI)
   const handleCreatePatient = async () => {
     const name = window.prompt("Enter patient name:");
     if (!name || !name.trim()) return;
@@ -194,7 +192,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Send message for current patient
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedPatientId) return;
@@ -265,7 +262,8 @@ const App: React.FC = () => {
       const errorMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: "Sorry, something went wrong while contacting the server.",
+        content:
+          "Sorry, something went wrong while contacting the server.",
         createdAt: new Date().toISOString(),
       };
       setMessagesByPatient((prev) => {
@@ -281,28 +279,29 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-50">
-      {/* Header */}
-      <header className="border-b border-slate-800 px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
+      <header className="border-b border-slate-200 px-4 py-3 flex items-center justify-between bg-white">
         <div>
-          <h1 className="text-lg font-semibold">HealthChat – Triage Console</h1>
-          <p className="text-xs text-slate-400">
-            Manage multiple patients, review their historical conversations, and continue ongoing triage.
+          <h1 className="text-lg font-semibold text-slate-900">
+            HealthChat – Triage Console
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Manage multiple patients, review their historical conversations, and
+            continue ongoing triage.
           </p>
         </div>
-        <span className="text-xs rounded-full border border-emerald-500/60 px-3 py-1 text-emerald-300 bg-emerald-950/40">
+        <span className="text-xs rounded-full border border-emerald-300 px-3 py-1 text-emerald-700 bg-emerald-50">
           Prototype · Not a medical device
         </span>
       </header>
 
-      {/* Main layout */}
       <main className="flex-1 flex flex-col md:flex-row">
-        {/* Sidebar: patients list */}
-        <aside className="w-full md:w-72 border-b md:border-b-0 md:border-r border-slate-800 flex flex-col bg-slate-950/90">
-          <div className="px-3 py-3 border-b border-slate-800 flex items-center gap-2">
+        {/* Sidebar: patients */}
+        <aside className="w-full md:w-72 border-b md:border-b-0 md:border-r border-slate-200 flex flex-col bg-blue-50/60">
+          <div className="px-3 py-3 border-b border-slate-200 flex items-center gap-2 bg-blue-50">
             <input
               type="text"
-              className="flex-1 rounded-lg bg-slate-900 border border-slate-700/70 px-2 py-1 text-xs placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="flex-1 rounded-lg bg-white border border-slate-300 px-2 py-1 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
               placeholder="Search by patient name..."
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
@@ -310,7 +309,7 @@ const App: React.FC = () => {
             <button
               type="button"
               onClick={handleCreatePatient}
-              className="px-2 py-1 rounded-lg text-xs bg-emerald-600 hover:bg-emerald-500 transition-colors"
+              className="px-2 py-1 rounded-lg text-xs bg-emerald-500 hover:bg-emerald-400 text-white transition-colors"
             >
               New
             </button>
@@ -318,13 +317,19 @@ const App: React.FC = () => {
 
           <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1 text-sm">
             {patientsLoading && (
-              <div className="text-xs text-slate-400 px-1 py-1">Loading patients...</div>
+              <div className="text-xs text-slate-500 px-1 py-1">
+                Loading patients...
+              </div>
             )}
             {patientsError && (
-              <div className="text-xs text-rose-400 px-1 py-1">Error: {patientsError}</div>
+              <div className="text-xs text-rose-600 px-1 py-1">
+                Error: {patientsError}
+              </div>
             )}
             {searchLoading && (
-              <div className="text-[10px] text-slate-400 px-1 py-1">Searching…</div>
+              <div className="text-[10px] text-slate-500 px-1 py-1">
+                Searching…
+              </div>
             )}
 
             {patients.length === 0 && !patientsLoading && (
@@ -345,14 +350,16 @@ const App: React.FC = () => {
                   onClick={() => handleSelectPatient(p)}
                   className={`w-full text-left px-2 py-2 rounded-lg border text-xs mb-1 transition-colors ${
                     isActive
-                      ? "border-sky-500 bg-sky-950/40"
-                      : "border-slate-800 bg-slate-900/60 hover:bg-slate-900"
+                      ? "border-sky-400 bg-sky-50"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-1">
-                    <span className="font-medium truncate">{p.name}</span>
+                    <span className="font-medium truncate text-slate-900">
+                      {p.name}
+                    </span>
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-1 truncate">
+                  <div className="text-[10px] text-slate-500 mt-1 truncate">
                     {last}
                   </div>
                 </button>
@@ -362,11 +369,12 @@ const App: React.FC = () => {
         </aside>
 
         {/* Chat area */}
-        <section className="flex-1 flex flex-col border-b md:border-b-0 md:border-r border-slate-800">
+        <section className="flex-1 flex flex-col border-b md:border-b-0 md:border-r border-slate-200 bg-white">
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
             {!selectedPatient && (
-              <div className="text-sm text-slate-400 mt-4">
-                Select a patient on the left or create a new one to start a triage session.
+              <div className="text-sm text-slate-500 mt-4">
+                Select a patient on the left or create a new one to start a
+                triage session.
               </div>
             )}
 
@@ -381,8 +389,8 @@ const App: React.FC = () => {
                   <div
                     className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
                       m.role === "user"
-                        ? "bg-sky-600 text-slate-50 rounded-br-sm"
-                        : "bg-slate-800 text-slate-50 rounded-bl-sm"
+                        ? "bg-sky-100 text-slate-900 rounded-br-sm border border-sky-100"
+                        : "bg-slate-100 text-slate-900 rounded-bl-sm border border-slate-200"
                     }`}
                   >
                     <div className="text-[10px] uppercase tracking-wide mb-1 opacity-70">
@@ -395,7 +403,7 @@ const App: React.FC = () => {
 
             {selectedPatient && isSending && (
               <div className="flex justify-start">
-                <div className="max-w-[70%] rounded-2xl px-3 py-2 text-sm bg-slate-800/80 text-slate-300 border border-slate-700/70">
+                <div className="max-w-[70%] rounded-2xl px-3 py-2 text-sm bg-slate-100 text-slate-700 border border-slate-200">
                   <div className="text-[10px] uppercase tracking-wide mb-1 opacity-70">
                     Assistant
                   </div>
@@ -408,20 +416,19 @@ const App: React.FC = () => {
             )}
           </div>
 
-          {/* Input area */}
           <form
             onSubmit={handleSubmit}
-            className="border-t border-slate-800 px-4 py-3 flex flex-col gap-2 bg-slate-950/80 backdrop-blur"
+            className="border-t border-slate-200 px-4 py-3 flex flex-col gap-2 bg-slate-50"
           >
             {sendError && (
-              <div className="text-xs text-rose-400 bg-rose-950/40 border border-rose-700/60 px-2 py-1 rounded">
+              <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 px-2 py-1 rounded">
                 Error: {sendError}
               </div>
             )}
 
             <div className="flex items-end gap-2">
               <textarea
-                className="flex-1 resize-none rounded-xl bg-slate-900 border border-slate-700/70 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 min-h-[52px] max-h-[120px]"
+                className="flex-1 resize-none rounded-xl bg-white border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-sky-400 min-h-[52px] max-h-[120px]"
                 placeholder={
                   selectedPatient
                     ? `Describe ${selectedPatient.name}'s symptoms, onset time, and any key context...`
@@ -434,39 +441,40 @@ const App: React.FC = () => {
               />
               <button
                 type="submit"
-                disabled={
-                  !selectedPatient || isSending || !input.trim()
-                }
-                className="inline-flex items-center justify-center px-4 py-2 rounded-xl text-sm font-medium bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors"
+                disabled={!selectedPatient || isSending || !input.trim()}
+                className="inline-flex items-center justify-center px-4 py-2 rounded-xl text-sm font-medium bg-sky-500 hover:bg-sky-400 text-white disabled:bg-slate-300 disabled:text-slate-600 disabled:cursor-not-allowed transition-colors"
               >
                 {isSending ? "Sending..." : "Send"}
               </button>
             </div>
 
             <p className="text-[10px] text-slate-500">
-              Do not enter personal identifiers (full name, ID numbers, exact address, etc.).
+              Do not enter personal identifiers (full name, ID numbers, exact
+              address, etc.).
             </p>
           </form>
         </section>
 
-        {/* Side panel: triage summary + safety note */}
-        <aside className="w-full md:w-80 border-t md:border-t-0 md:border-l border-slate-800 px-4 py-4 flex flex-col gap-4 bg-slate-950/90">
+        {/* Side panel */}
+        <aside className="w-full md:w-80 border-t md:border-t-0 md:border-l border-slate-200 px-4 py-4 flex flex-col gap-4 bg-slate-50">
           <div>
-            <h2 className="text-sm font-semibold mb-2">Triage summary</h2>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 text-sm space-y-2">
+            <h2 className="text-sm font-semibold mb-2 text-slate-900">
+              Triage summary
+            </h2>
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-slate-500">
                   Current assessment
                 </span>
                 <span
                   className={`text-xs px-2 py-1 rounded-full border ${
                     currentTriage?.level === "urgent"
-                      ? "border-rose-500/70 text-rose-300 bg-rose-950/50"
+                      ? "border-rose-300 text-rose-700 bg-rose-50"
                       : currentTriage?.level === "watchful"
-                      ? "border-amber-500/70 text-amber-300 bg-amber-950/50"
+                      ? "border-amber-300 text-amber-700 bg-amber-50"
                       : currentTriage?.level === "normal"
-                      ? "border-emerald-500/70 text-emerald-300 bg-emerald-950/40"
-                      : "border-slate-600 text-slate-300 bg-slate-900"
+                      ? "border-emerald-300 text-emerald-700 bg-emerald-50"
+                      : "border-slate-300 text-slate-600 bg-slate-50"
                   }`}
                 >
                   {currentTriage?.level
@@ -474,7 +482,7 @@ const App: React.FC = () => {
                     : "Not available"}
                 </span>
               </div>
-              <p className="text-xs text-slate-300 whitespace-pre-wrap">
+              <p className="text-xs text-slate-700 whitespace-pre-wrap">
                 {currentTriage?.notes ??
                   "Once the assistant responds for a patient, a brief summary of the risk level or follow-up advice can appear here."}
               </p>
@@ -482,13 +490,18 @@ const App: React.FC = () => {
           </div>
 
           <div>
-            <h2 className="text-sm font-semibold mb-2">Safety notice</h2>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 text-xs text-slate-300 space-y-1">
+            <h2 className="text-sm font-semibold mb-2 text-slate-900">
+              Safety notice
+            </h2>
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs text-slate-700 space-y-1">
               <p>
-                This assistant is for general information and early triage support only. It does not provide a medical diagnosis.
+                This assistant is for general information and early triage
+                support only. It does not provide a medical diagnosis.
               </p>
               <p>
-                If a patient experiences severe symptoms such as chest pain, difficulty breathing, confusion, or rapid worsening of their condition, they should seek emergency medical care immediately.
+                If a patient experiences severe symptoms such as chest pain,
+                difficulty breathing, confusion, or rapid worsening of their
+                condition, they should seek emergency medical care immediately.
               </p>
             </div>
           </div>
