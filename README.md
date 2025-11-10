@@ -8,7 +8,7 @@ app/
 │   ├── flow.py                  # Flow 编排（定义节点执行顺序）
 │   └── nodes/                   # 各 Node 模块（PocketFlow 风格）
 │       ├── triage.py            # SafetyTriageNode：分诊判断（紧急/非紧急）（已实现）
-│       ├── history.py           # HistoryFetchNode：获取历史就诊摘要（已实现）
+│       ├── history.py           # HistoryLookupNode：获取历史就诊摘要（已实现）
 │       ├── deepseek.py          # DeepSeekChatNode：调用 DeepSeek 生成回复（已实现）
 │       ├── reply_extract.py     # PostprocessNode：解析模型输出、提取追问（已实现）
 │       └── persist.py           # PersistNode：写入消息和审计日志（已实现）

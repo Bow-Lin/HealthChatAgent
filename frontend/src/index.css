@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* 下面是一些简单的全局样式，可以照需要改 */
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Helvetica Neue", Arial, sans-serif;
+  background-color: #020617; /* slate-950 */
+  color: #e5e7eb;           /* slate-200 */
+}
+
+#root {
+  min-height: 100vh;
+}

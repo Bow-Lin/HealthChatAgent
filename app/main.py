@@ -2,7 +2,6 @@
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
 from app.runtime.flow import make_clinical_flow
-from app.services.session import get_tenant_ctx
 from app.services.repo import Repo
 
 app = FastAPI(title="Clinical Chatbot (PocketFlow x DeepSeek)")
