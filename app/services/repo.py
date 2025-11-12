@@ -58,7 +58,7 @@ class Repo:
         if session is None:
             session = self._session_factory()
             close_session = True
-
+        print("---------------------run get messages")
         try:
             stmt = (
                 select(Message)

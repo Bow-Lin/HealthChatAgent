@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import List, Optional
 
 class ChatIn(BaseModel):
     user_id: str
@@ -8,5 +8,7 @@ class ChatIn(BaseModel):
 class ChatOut(BaseModel):
     reply: str
     triage_level: Optional[str] = None
-    followups: Optional[str] = None
-    warnings: Optional[str] = None
+    # list of suggestions for next questions
+    followups: List[str] = Field(default_factory=list)
+    # safety / clinical warnings
+    warnings: List[str] = Field(default_factory=list)

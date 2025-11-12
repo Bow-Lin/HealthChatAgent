@@ -5,6 +5,8 @@ from app.db.session import get_session
 from app.services.repo import Repo
 from app.schemas.chat import ChatIn, ChatOut
 from app.runtime.flow import make_clinical_flow
+from app.runtime.flow import make_clinical_flow_qwen
+
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -40,7 +42,7 @@ async def chat_endpoint(
     3. Return model reply
     """
     repo = Repo(lambda: session)  # ✅ wrap session in callable
-    flow = make_clinical_flow()
+    flow = make_clinical_flow_qwen()
     shared = {
         "repo": repo,
         "tenant_id": "default",
@@ -56,7 +58,8 @@ async def chat_endpoint(
     triage = shared.get("triage_level", "normal")
     followups = shared.get("followups", "")
     warnings = shared.get("warnings", "")
-
+    print("------------------------")
+    print(f"followups: {followups}")
     return ChatOut(
         reply=reply,
         triage_level=triage,
