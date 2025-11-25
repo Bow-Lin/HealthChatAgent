@@ -18,7 +18,9 @@ interface ChatMessage {
 interface ChatResponse {
   reply: string;
   triage_level?: string;
-  triage_notes?: string;
+  followups?: string;
+  warnings?: string;
+  is_streaming?: boolean;
 }
 
 interface TriageInfo {
@@ -217,9 +219,27 @@ const App: React.FC = () => {
       };
     });
 
+    // Create an initial empty assistant message for streaming content
+    const initialAssistantMessageId = crypto.randomUUID();
+    const initialAssistantMessage: ChatMessage = {
+      id: initialAssistantMessageId,
+      role: "assistant",
+      content: "",
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessagesByPatient((prev) => {
+      const existing = prev[patientId] ?? [];
+      return {
+        ...prev,
+        [patientId]: [...existing, initialAssistantMessage],
+      };
+    });
+
     try {
       setIsSending(true);
-      const res = await fetch("/api/chat", {
+
+      const res = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -232,45 +252,94 @@ const App: React.FC = () => {
         throw new Error(`Request failed with status ${res.status}`);
       }
 
-      const data: ChatResponse = await res.json();
+      const reader = res.body?.getReader();
+      if (!reader) {
+        throw new Error("Streaming is not supported in this browser/environment.");
+      }
 
-      const assistantMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: data.reply ?? "No reply received from server.",
-        createdAt: new Date().toISOString(),
-      };
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      setMessagesByPatient((prev) => {
-        const existing = prev[patientId] ?? [];
-        return {
-          ...prev,
-          [patientId]: [...existing, assistantMessage],
-        };
-      });
+      let fullReply = "";
 
-      setTriageByPatient((prev) => ({
-        ...prev,
-        [patientId]: {
-          level: data.triage_level ?? null,
-          notes: data.triage_notes ?? null,
-        },
-      }));
+      readingLoop: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (!line.startsWith("data: ")) continue;
+
+          const dataStr = line.slice(6).trim();
+
+          if (dataStr === "[DONE]") {
+            break readingLoop;
+          }
+
+          try {
+            const data: ChatResponse = JSON.parse(dataStr);
+
+            fullReply = data.reply ?? fullReply;
+
+            // Update the assistant message content as we receive new data
+            setMessagesByPatient((prev) => {
+              const existing = prev[patientId] ?? [];
+              return {
+                ...prev,
+                [patientId]: existing.map((msg) =>
+                  msg.id === initialAssistantMessageId
+                    ? { ...msg, content: fullReply || "No reply received from server." }
+                    : msg
+                ),
+              };
+            });
+
+            // Build triage notes from followups and warnings
+            const triageLevel = data.triage_level ?? null;
+            const notesParts: string[] = [];
+            if (data.followups) notesParts.push(data.followups);
+            if (data.warnings) notesParts.push(data.warnings);
+            const triageNotes =
+              notesParts.length > 0 ? notesParts.join("\n\n") : null;
+
+            setTriageByPatient((prev) => ({
+              ...prev,
+              [patientId]: {
+                level: triageLevel,
+                notes: triageNotes,
+              },
+            }));
+
+            if (data.is_streaming === false) {
+              break readingLoop;
+            }
+          } catch (e) {
+            console.error("Error parsing SSE data:", e, dataStr);
+          }
+        }
+      }
     } catch (err: any) {
       console.error(err);
       setSendError(err?.message ?? "Unknown error");
+
       const errorMessage: ChatMessage = {
-        id: crypto.randomUUID(),
+        id: initialAssistantMessageId,
         role: "assistant",
-        content:
-          "Sorry, something went wrong while contacting the server.",
+        content: "Sorry, something went wrong while contacting the server.",
         createdAt: new Date().toISOString(),
       };
+
       setMessagesByPatient((prev) => {
         const existing = prev[patientId] ?? [];
         return {
           ...prev,
-          [patientId]: [...existing, errorMessage],
+          [patientId]: existing.map((msg) =>
+            msg.id === initialAssistantMessageId ? errorMessage : msg
+          ),
         };
       });
     } finally {
